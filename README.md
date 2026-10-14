@@ -121,6 +121,13 @@ PlatformManager.platform_insts ──匹配 meta().id──► PhotonPlatformStu
 - **能回复但不会主动发消息**：用 `/photonpush` 自检（见上文「排查主动消息不通」）。
   第三方主动聊天插件（如 `astrbot_plugin_proactive_chat`）在发送前会检查平台实例是否存在且
   `status == RUNNING`，不满足会直接跳过并记 `[主动消息] 平台 ... 未运行，跳过主动消息`。
+- **`/photonpush` 正常、但主动聊天插件仍然不发**：这类插件有**自己的「已启用会话」列表**，
+  只注册平台实例是不够的。要在它的配置里把本插件的会话 UMO 加进列表（在 iMessage 里发 `/sid`
+  复制，形如 `photon_imessage:FriendMessage:any;-;+8618584582040`），例如
+  `astrbot_plugin_proactive_chat` 的 `friend_settings.session_list`。
+  未启用的会话会被它在 **DEBUG 级别静默跳过**（日志里看不到）。另外留意它的两个静默拦截：
+  `schedule_settings.quiet_hours`（免打扰时段，如 `1-7` 表示 01:00–06:59 不发）和
+  `schedule_settings.max_unanswered_times`（连续未回复上限，达上限后该会话的触发器会被跳过）。
 
 ## 参考
 
