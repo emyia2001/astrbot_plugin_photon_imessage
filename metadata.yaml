@@ -1,7 +1,7 @@
 name: astrbot_plugin_photon_imessage
 desc: 通过 photon.codes 托管 Spectrum 连接 iMessage，含 WebUI 初始化向导，支持 LLM 自动回复与其他插件
 author: emyia2001
-version: 1.9.0
+version: 1.9.1
 repo: https://github.com/emyia2001/astrbot_plugin_photon_imessage
 display_name: Photon iMessage
 short_desc: 通过 Photon Spectrum 接入 iMessage 私聊。

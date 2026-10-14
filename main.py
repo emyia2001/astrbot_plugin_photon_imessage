@@ -37,6 +37,13 @@ from astrbot.api.platform import (
 )
 from astrbot.api.star import Context, Star
 
+# GreedyStr: 指令参数里的「其余全部文本」标记类型（AstrBot 内置，做兼容导入）。
+# 必须能在模块全局解析到（inspect.signature(eval_str=True) 会用它求值注解）。
+try:  # pragma: no cover - 取决于 AstrBot 版本
+    from astrbot.core.star.filter.command import GreedyStr
+except Exception:  # noqa: BLE001
+    GreedyStr = str  # type: ignore[assignment,misc]
+
 from .photon_platform_event import PhotonPlatformEvent
 
 _PLUGIN_NAME = "astrbot_plugin_photon_imessage"
@@ -925,9 +932,76 @@ class PhotonImsgPlugin(Star):
         ]
         yield event.plain_result("\n".join(parts))
 
+    @filter.command("photonpush")
+    async def photon_push(self, event: AstrMessageEvent, text: GreedyStr) -> None:
+        """主动发送自检：用 AstrBot 的主动发送 API 给当前会话推一条消息。
+
+        这条指令走的就是「定时任务」「第三方主动聊天插件」的同一条路：
+        ``context.send_message(umo, chain)`` → 在
+        ``platform_manager.platform_insts`` 里找 ``meta().id == 会话平台名``
+        的实例 → ``PhotonPlatformStub.send_by_session()`` → sidecar ``/send``。
+
+        因此它的输出能直接把故障段定位出来：
+        - 平台实例显示「未注册」→ AstrBot 根本没找到 photon_imessage 载体；
+        - ``context.send_message`` 返回 False → 同上，消息在核心 API 就被丢弃；
+        - 两者都正常却收不到消息 → 问题在 sidecar / Spectrum 发送侧。
+        """
+        umo = event.unified_msg_origin
+        payload = str(text or "").strip() or "（自检）这是一条主动消息。"
+
+        lines = ["✨ 主动发送自检", f"会话: {umo}"]
+
+        # 1) 平台实例表里有没有 photon_imessage（主动发送的唯一入口）
+        try:
+            insts = list(
+                getattr(self.context.platform_manager, "platform_insts", []) or []
+            )
+        except Exception as e:  # noqa: BLE001
+            insts = []
+            lines.append(f"❌ 读取 platform_insts 失败: {e}")
+        found: list[str] = []
+        for p in insts:
+            try:
+                meta = p.meta()
+            except Exception:  # noqa: BLE001
+                continue
+            if meta.id != "photon_imessage":
+                continue
+            status = getattr(p.status, "value", p.status)
+            tag = "(本插件)" if p is self._stub_platform else "(他人注册)"
+            found.append(f"{meta.id}={status}{tag}")
+        lines.append(
+            "平台实例: " + ("; ".join(found) if found else "❌ 未注册（主动发送不可用）")
+        )
+        lines.append(f"实例表总数: {len(insts)}")
+
+        # 2) 真正跑一次核心主动发送 API
+        try:
+            from astrbot.api.event import MessageChain
+
+            ok = await self.context.send_message(umo, MessageChain([Plain(payload)]))
+            lines.append(f"context.send_message -> {ok}")
+            if not ok:
+                lines.append("❌ AstrBot 未匹配到平台，消息止步于核心 API。")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"❌ context.send_message 异常: {e}")
+
+        yield event.plain_result("\n".join(lines))
+
     # ------------------------------------------------------------------
     # 轻量平台实例（让主动发送 / 平台实例查询生效）
     # ------------------------------------------------------------------
+    @filter.on_platform_loaded()
+    async def _on_platform_loaded(self) -> None:
+        """平台适配器（重新）加载后，确保主动发送载体仍在实例表里。
+
+        AstrBot 的 ``PlatformManager.terminate()`` 会执行
+        ``platform_insts.clear()``（见 core/platform/manager.py）。只在
+        ``initialize()`` 里注册一次的 stub 会被这样抹掉，而被动回复不查这张表，
+        于是表现为「能回消息、但主动消息静默失败」。这里在每次平台加载后补注册。
+        """
+        await self._register_stub_platform()
+
     async def _register_stub_platform(self) -> None:
         """把 PhotonPlatformStub 加入 platform_manager.platform_insts。
 

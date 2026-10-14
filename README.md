@@ -56,6 +56,47 @@ iPhone iMessage ──►  photon.codes Spectrum (gRPC)
 - 你安装的其他插件（指令、监听器等）也能响应 iMessage——它们看到的是一个普通的私聊消息事件。
 - 日志中应出现 `[Photon] 收到 ...` 与 `[photon-sidecar] ...` 输出。
 
+### 内置指令
+
+| 指令 | 作用 |
+| --- | --- |
+| `/photonstatus` | 查看项目 ID、分配号码、sidecar 连接与**主动发送载体**状态 |
+| `/photonpush [文本]` | **主动发送自检**：用 AstrBot 的主动发送 API 给当前会话推一条消息 |
+
+## 主动发送（定时任务 / 主动聊天插件）
+
+本插件以普通 Star 插件方式实现，但会向 AstrBot 的
+`platform_manager.platform_insts` 注册一个最小平台实例
+（`photon_imessage`，`support_proactive_message=True`，状态 `RUNNING`），
+因此**非用户触发**的消息发送也能落到 iMessage 上：
+
+```
+定时任务 / 第三方主动聊天插件
+        │  context.send_message(umo, chain)
+        ▼
+PlatformManager.platform_insts ──匹配 meta().id──► PhotonPlatformStub
+        │  send_by_session() → plugin.send_chain()
+        ▼
+   sidecar POST /send  ──►  spectrum-ts  ──►  iMessage
+```
+
+> ⚠️ 被动回复**不查**这张平台实例表，主动发送**必须查**。
+> 所以「能正常回复、但定时任务/主动插件发不出消息」几乎总是
+> **平台实例表里没有 `photon_imessage`**：AstrBot 的
+> `PlatformManager.terminate()` 会执行 `platform_insts.clear()`，
+> 只在 `initialize()` 里注册一次就会被抹掉。
+> 插件已在 `on_platform_loaded` 钩子里补注册，并在 `/photonpush` 输出中直接报告结果。
+
+### 排查主动消息不通
+
+在 iMessage 里发一条 `/photonpush`，按输出判断：
+
+| 输出 | 含义 |
+| --- | --- |
+| `平台实例: photon_imessage=running(本插件)` + `context.send_message -> True` | AstrBot 侧正常；若仍收不到消息，去查 `[photon-sidecar]` / Spectrum 日志 |
+| `平台实例: ❌ 未注册（主动发送不可用）` | 平台载体没注册上，主动消息会静默失败——检查日志中的 `[Photon] 注册平台实例失败` |
+| `context.send_message -> False` | AstrBot 没匹配到平台，消息止步于核心 API |
+
 ## WebUI 初始化向导（不用手动敲 CLI）
 
 插件内置一个「**设置向导**」页面，帮你完成 **登录 Photon → 建独立项目 → 获取 Spectrum 凭据 → 注册手机号 → 写入插件配置** 的全流程，完全在 WebUI 里点击完成（与 hermes 相同的光子设备登录方式，只需浏览器授权一次）。
@@ -77,6 +118,9 @@ iPhone iMessage ──►  photon.codes Spectrum (gRPC)
   `PHOTON_PROJECT_ID`/`PHOTON_PROJECT_SECRET` 一致）。
 - **收不到消息**：看 `[photon-sidecar]` 日志；若出现入站流错误，多为 Spectrum 上游短时问题，
   sidecar 与插件会自动重连。
+- **能回复但不会主动发消息**：用 `/photonpush` 自检（见上文「排查主动消息不通」）。
+  第三方主动聊天插件（如 `astrbot_plugin_proactive_chat`）在发送前会检查平台实例是否存在且
+  `status == RUNNING`，不满足会直接跳过并记 `[主动消息] 平台 ... 未运行，跳过主动消息`。
 
 ## 参考
 
