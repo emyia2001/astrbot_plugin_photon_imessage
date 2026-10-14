@@ -1,0 +1,107 @@
+{
+  "project_id": {
+    "description": "Photon Spectrum 项目 ID (spectrumProjectId)",
+    "type": "string",
+    "hint": "在 photon.codes 控制台创建项目后获得。与 hermes 的 PHOTON_PROJECT_ID 相同。",
+    "default": ""
+  },
+  "project_secret": {
+    "description": "Photon Spectrum 项目密钥 (projectSecret)",
+    "type": "string",
+    "hint": "与 PHOTON_PROJECT_SECRET 相同，请妥善保管",
+    "default": "",
+    "secret": true
+  },
+  "sidecar_port": {
+    "description": "本机 Node sidecar 端口",
+    "type": "int",
+    "hint": "AstrBot 与本机 sidecar 通信的端口，默认 8789",
+    "default": 8789
+  },
+  "sidecar_token": {
+    "description": "sidecar 访问令牌（可选，自动生成则留空）",
+    "type": "string",
+    "hint": "用于保护本机 sidecar HTTP 接口。留空时插件自动生成随机令牌。",
+    "default": "",
+    "secret": true
+  },
+  "node_bin": {
+    "description": "Node.js 可执行文件路径",
+    "type": "string",
+    "hint": "留空则自动查找 PATH 中的 node",
+    "default": ""
+  },
+  "auto_install_sidecar": {
+    "description": "首次运行时自动安装 sidecar 依赖 (npm install)",
+    "type": "bool",
+    "hint": "需要 AstrBot 机器可访问 npm 源。若关闭，请手动在 sidecar 目录执行 npm install。",
+    "default": true
+  },
+  "phone": {
+    "description": "你的 iMessage 手机号 (注册 line 用)",
+    "type": "string",
+    "default": ""
+  },
+  "assigned_line": {
+    "description": "分配给 AstrBot 的 iMessage 号码 (TEXTS ON)",
+    "type": "string",
+    "default": "",
+    "hint": "由初始化向导自动写入，也可从 Photon Dashboard 查询。"
+  },
+  "imessage_persona_enable": {
+    "description": "为 iMessage 单独指定人格 (复用 AstrBot 已有的人格)",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，iMessage 消息的 LLM 请求会追加下面指定 persona_id 对应的人格。"
+  },
+  "imessage_persona_id": {
+    "description": "iMessage 专属人格的 persona_id (复用 AstrBot 人格)",
+    "type": "string",
+    "default": "",
+    "hint": "填 AstrBot「人格」页里已建好的某个 persona 的 name/id。留空则用全局默认。",
+    "_special": "select_persona"
+  },
+  "segment_enable": {
+    "description": "长消息分段发送",
+    "type": "bool",
+    "default": true,
+    "hint": "iMessage 长文本会被折叠成「显示更多」。开启后按段落/句子把长回复拆成多条发送。"
+  },
+  "override_astrbot_segment": {
+    "description": "覆盖 AstrBot 原生的分段回复（仅对 iMessage）",
+    "type": "bool",
+    "default": true,
+    "hint": "AstrBot 的 segmented_reply 也会对 iMessage 生效并与本插件叠加。开启后插件会屏蔽它，只由下面的配置决定分段，其它平台不受影响。"
+  },
+  "segment_max_length": {
+    "description": "每段最大字符数",
+    "type": "int",
+    "default": 500,
+    "hint": "分段目标长度。建议 300~800；过短会刷屏，过长仍会被折叠。"
+  },
+  "segment_delay": {
+    "description": "分段之间的间隔秒数",
+    "type": "float",
+    "default": 0.8,
+    "hint": "每条分段之间的等待时间，避免一次性刷出多条。设为 0 则连续发送。"
+  },
+  "segment_split_mode": {
+    "description": "分段方式",
+    "type": "string",
+    "default": "sentence",
+    "options": ["sentence", "smart", "paragraph", "length"],
+    "hint": "sentence=按句号/问号等逐句分段（像人一样一条条发，推荐）；smart=智能合并到每段字符数；paragraph=只按空行；length=只按长度硬切。"
+  },
+  "typing_enable": {
+    "description": "显示「正在输入」状态",
+    "type": "bool",
+    "default": true,
+    "hint": "机器人生成回复期间，向 iMessage 发送输入中状态（对方可见）。"
+  },
+  "typing_keepalive_sec": {
+    "description": "「正在输入」保活间隔秒数",
+    "type": "int",
+    "default": 8,
+    "hint": "iMessage 输入气泡会超时消失，插件会按此间隔重发以保持显示。0 表示不保活。"
+  }
+}

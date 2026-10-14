@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Photon iMessage 初始化向导</title>
+  <style>
+    :root {
+      --brand: #0a84ff;
+      --ok: #30d158;
+      --warn: #ffd60a;
+      --err: #ff453a;
+      --bg: #ffffff;
+      --fg: #1c1c1e;
+      --muted: #8e8e93;
+      --border: #e5e5ea;
+      --code-bg: #f2f2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--fg);
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 18px; margin-bottom: 16px; background: #fff;
+    }
+    .step-title { font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--brand); color: #fff; font-size: 12px; flex-shrink: 0;
+    }
+    .badge.done { background: var(--ok); }
+    .badge.wait { background: var(--warn); color: #000; }
+    label { font-size: 13px; color: var(--muted); display: block; margin: 8px 0 4px; }
+    input[type="text"] {
+      width: 100%; padding: 10px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 14px;
+    }
+    button {
+      padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+      background: var(--brand); color: #fff; font-size: 14px; font-weight: 500;
+    }
+    button.secondary { background: #636366; }
+    button:disabled { background: #c7c7cc; cursor: not-allowed; }
+    .code-block {
+      background: var(--code-bg); border-radius: 8px; padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px; word-break: break-all; margin: 10px 0;
+    }
+    .url { color: var(--brand); }
+    .msg { font-size: 13px; margin-top: 10px; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--err); }
+    .msg.warn { color: #b8860b; }
+    .result-box { white-space: pre-wrap; font-size: 13px; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>📱 Photon iMessage 初始化向导</h1>
+  <div class="sub">帮你一键完成 Photon 登录、建项目、获取 Spectrum 凭据，并写入本插件配置。</div>
+
+  <!-- 步骤1: 登录 -->
+  <div class="card">
+    <div class="step-title"><span class="badge" id="d1">1</span> 登录 Photon 账号</div>
+    <p class="hint">需要你在浏览器中授权一次（与 hermes 相同的设备登录方式）。</p>
+    <button id="btn-login">① 开始登录</button>
+    <div id="login-box" style="display:none">
+      <div class="code-block">
+        <div>🔗 打开此链接：<span class="url" id="login-url"></span></div>
+        <div>🔑 授权码：<b id="login-code"></b></div>
+      </div>
+      <p class="hint">在打开的页面里登录你的 Photon 账号并输入授权码。完成后本页会自动继续。</p>
+      <div class="msg" id="login-msg"></div>
+    </div>
+  </div>
+
+  <!-- 步骤2: 项目 -->
+  <div class="card">
+    <div class="step-title"><span class="badge" id="d2">2</span> 创建独立项目</div>
+    <label for="project-name">项目名（默认 astrbot-imessage）</label>
+    <input type="text" id="project-name" value="astrbot-imessage" />
+    <div style="margin-top:10px">
+      <button id="btn-project">② 创建/确保项目</button>
+      <button class="secondary" id="btn-project-force" title="同名已存在时也强制新建">强制新建</button>
+    </div>
+    <div class="msg" id="project-msg"></div>
+  </div>
+
+  <!-- 步骤3: 手机号 -->
+  <div class="card">
+    <div class="step-title"><span class="badge" id="d3">3</span> 注册 iMessage 手机号</div>
+    <label for="phone">你的 iMessage 手机号（E.164，如 +15551234567）</label>
+    <input type="text" id="phone" placeholder="+15551234567" />
+    <button id="btn-phone" style="margin-top:10px">③ 注册并获取 line</button>
+    <div class="msg" id="phone-msg"></div>
+    <div class="result-box" id="line-result"></div>
+  </div>
+
+  <!-- 步骤4: 应用 -->
+  <div class="card">
+    <div class="step-title"><span class="badge" id="d4">4</span> 写入插件配置</div>
+    <p class="hint">把上面获取的 project_id / project_secret 写入插件配置。写入后需要重载插件生效。</p>
+    <button id="btn-apply">④ 写入配置</button>
+    <div class="msg" id="apply-msg"></div>
+  </div>
+
+  <script type="module">
+    const bridge = window.AstrBotPluginPage;
+    await bridge.ready();
+
+    const $ = (id) => document.getElementById(id);
+    const badge = (id) => document.getElementById(id);
+    function badgeDone(n) {
+      const el = badge("d" + n);
+      el.textContent = "✓";
+      el.classList.add("done");
+    }
+    function badgeWait(n) {
+      const el = badge("d" + n);
+      el.textContent = "…";
+      el.classList.add("wait");
+    }
+    function badgeReset(n) {
+      const el = badge("d" + n);
+      el.textContent = String(n);
+      el.classList.remove("done", "wait");
+    }
+
+    // ---- 登录 ----
+    $("btn-login").addEventListener("click", async () => {
+      badgeWait(1);
+      $("login-box").style.display = "block";
+      $("login-msg").textContent = ""; $("login-msg").className = "msg";
+      try {
+        const r = await bridge.apiPost("setup/begin_login", {});
+        if (r && r.ok) {
+          $("login-url").textContent = r.verification_uri;
+          $("login-code").textContent = r.user_code;
+          $("login-msg").textContent = "已生成授权，请打开链接完成授权。等待你确认中…";
+          pollLogin(r.interval || 5);
+        } else {
+          $("login-msg").textContent = "请求失败: " + JSON.stringify(r);
+          $("login-msg").className = "msg err";
+          badgeReset(1);
+        }
+      } catch (e) {
+        $("login-msg").textContent = "请求失败: " + e;
+        $("login-msg").className = "msg err";
+        badgeReset(1);
+      }
+    });
+
+    async function pollLogin(interval) {
+      const wait = Math.min((interval || 5) * 1000, 3000);
+      const check = async () => {
+        let r;
+        try {
+          r = await bridge.apiPost("setup/poll_login", {});
+        } catch (e) {
+          setTimeout(check, wait);
+          return;
+        }
+        // 成功：后端已拿到 token
+        if (r && r.logged_in) {
+          $("login-msg").textContent = "✅ 登录成功！";
+          $("login-msg").className = "msg ok";
+          badgeDone(1);
+          return;
+        }
+        // 失败：后端轮询返回错误（例如授权被拒 / 超时）
+        if (r && r.state === "error") {
+          $("login-msg").textContent = "❌ 登录失败：" + (r.error || "未知错误");
+          $("login-msg").className = "msg err";
+          badgeReset(1);
+          return;
+        }
+        // pending：继续等待
+        setTimeout(check, wait);
+      };
+      setTimeout(check, wait);
+    }
+
+    // ---- 项目 ----
+    $("btn-project").addEventListener("click", () => createProject(false));
+    $("btn-project-force").addEventListener("click", () => createProject(true));
+    async function createProject(force) {
+      badgeWait(2);
+      $("project-msg").textContent = ""; $("project-msg").className = "msg";
+      try {
+        const name = $("project-name").value.trim() || "astrbot-imessage";
+        const r = await bridge.apiPost("setup/create_project", { want_new: force, name });
+        if (r && r.ok) {
+          $("project-msg").textContent =
+            (r.created ? "✅ 项目已创建" : "✅ 复用已有项目") + "：" + r.project_id;
+          $("project-msg").className = "msg ok";
+          badgeDone(2);
+        } else {
+          $("project-msg").textContent = (r && r.message) ? r.message : "创建失败: " + JSON.stringify(r);
+          $("project-msg").className = "msg err";
+          badgeReset(2);
+        }
+      } catch (e) {
+        $("project-msg").textContent = "请求失败: " + e;
+        $("project-msg").className = "msg err";
+        badgeReset(2);
+      }
+    }
+
+    // ---- 手机号 ----
+    $("btn-phone").addEventListener("click", async () => {
+      badgeWait(3);
+      $("phone-msg").textContent = ""; $("phone-msg").className = "msg";
+      $("line-result").textContent = "";
+      try {
+        const r = await bridge.apiPost("setup/register_phone", { phone: $("phone").value.trim() });
+        if (r && r.ok) {
+          $("phone-msg").textContent = r.created ? "✅ 手机号已注册" : "✅ 手机号已存在（复用）";
+          $("phone-msg").className = "msg ok";
+          if (r.assigned_line) {
+            $("line-result").textContent = "📱 分配给你的 iMessage 号码（TEXTS ON）：\n" + r.assigned_line;
+          } else {
+            $("line-result").textContent = "⚠️ 暂未分配到独立 line，请到 Photon Dashboard 查看。";
+            $("line-result").className = "msg warn";
+          }
+          badgeDone(3);
+        } else {
+          $("phone-msg").textContent = (r && r.message) ? r.message : "失败: " + JSON.stringify(r);
+          $("phone-msg").className = "msg err";
+          badgeReset(3);
+        }
+      } catch (e) {
+        $("phone-msg").textContent = "请求失败: " + e;
+        $("phone-msg").className = "msg err";
+        badgeReset(3);
+      }
+    });
+
+    // ---- 应用 ----
+    $("btn-apply").addEventListener("click", async () => {
+      badgeWait(4);
+      $("apply-msg").textContent = ""; $("apply-msg").className = "msg";
+      try {
+        const r = await bridge.apiPost("setup/apply_config", {});
+        if (r && r.ok) {
+          $("apply-msg").textContent = r.message || "✅ 已写入配置。请重载插件。";
+          $("apply-msg").className = "msg ok";
+          badgeDone(4);
+        } else {
+          $("apply-msg").textContent = (r && r.message) ? r.message : "失败: " + JSON.stringify(r);
+          $("apply-msg").className = "msg err";
+          badgeReset(4);
+        }
+      } catch (e) {
+        $("apply-msg").textContent = "请求失败: " + e;
+        $("apply-msg").className = "msg err";
+        badgeReset(4);
+      }
+    });
+  </script>
+</body>
+</html>
